@@ -1,18 +1,284 @@
-{% extends "index.html" %}
-
-{% block content %}
-    <section class="section-padding">
-        <div class="container">
-            <div class="row">
-                <div class="col-lg-12 col-12 text-center">
-                    <h3 class="mb-4">{{ detail.title }}</h3>
-                    <p>Ngày đăng: {{ detail.date }}</p>
-                    <div>
-                        <p>{{ detail.body }}</p>
-                    </div>
-                    <a href="{% url 'posts:list' %}">Quay lại danh sách bài viết</a>
-                </div>
-            </div>
+{% extends "index.html" %} {% load static %} {% block map %}
+<link rel="stylesheet" href="{% static 'leaflet/leaflet.css' %}" />
+<link rel="stylesheet" href="{% static 'css/map.css' %}" />
+<script src="{% static 'leaflet/leaflet.js' %}"></script>
+<!-- Leaflet Routing Machine -->
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css"
+/>
+<script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
+<!-- Leaflet.PolylineDecorator -->
+<script src="https://unpkg.com/leaflet.polyline.decorator@1.6.0/dist/leaflet.polylineDecorator.js"></script>
+<style>
+  #map {
+    width: 100%;
+    height: 100%;
+  }
+  .route-toggle {
+    margin: 10px 0;
+  }
+  .route-toggle button {
+    margin-right: 10px;
+    padding: 5px 10px;
+  }
+  .route-toggle button.active {
+    background-color: #007bff;
+    color: white;
+  }
+  #route-distance {
+    margin: 10px 0;
+    font-weight: bold;
+  }
+</style>
+{% endblock %} {% block content %}
+<section class="section-padding">
+  <div class="container">
+    <div class="row">
+      <div class="col-lg-12 col-12 text-center">
+        <h3 class="mb-4">{{ detail.title }}</h3>
+        <p>Ngày đăng: {{ detail.date }}</p>
+        <div>
+          <p>{{ detail.body|safe }}</p>
         </div>
-    </section>
+
+        <!-- Nút chuyển đổi lộ trình -->
+        <div class="route-toggle">
+          <button id="show-outbound" class="active">Lượt đi</button>
+          <button id="show-inbound">Lượt về</button>
+        </div>
+
+        <!-- Hiển thị quãng đường -->
+        <div id="route-distance">Quãng đường: Đang tính toán...</div>
+
+        <!-- Bản đồ hiển thị các trạm xe buýt -->
+        <div
+          class="custom-block custom-block-topics-listing bg-white shadow-lg mb-5"
+        >
+          <div class="row" style="height: 500px">
+            <div id="map"></div>
+          </div>
+        </div>
+
+        <a href="{% url 'posts:list' %}">Quay lại danh sách bài viết</a>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %} {% block script %}
+<script>
+  // Cấu hình bản đồ
+  let config = {
+      minZoom: 7,
+      maxZoom: 18,
+  };
+  const zoom = 16;
+  const lat = 10.773994;
+  const lng = 106.697114;
+
+  // Khởi tạo bản đồ
+  const map = L.map("map", config).setView([lat, lng], zoom);
+  map.attributionControl.setPrefix(false);
+
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '© <a href="#">LT GIS</a> có bản',
+  }).addTo(map);
+
+  // Icon cho marker
+  var leafletIcon = L.icon({
+      iconUrl: '/static/leaflet/images/bus.png',
+      iconSize: [30, 40],
+      iconAnchor: [15, 38],
+  });
+
+  // Danh sách các trạm xe buýt (lượt đi và lượt về)
+  let pointsOutbound = {{ detail.points_outbound|default:"[]"|safe }};
+  let pointsInbound = {{ detail.points_inbound|default:"[]"|safe }};
+
+  // Tạo mảng lưu trữ marker
+  let markers = [];
+
+  // Thêm marker cho các trạm (chỉ hiển thị một lần, không trùng lặp)
+  let allPoints = [...pointsOutbound, ...pointsInbound];
+  let uniquePoints = [];
+  let seen = new Set();
+
+  allPoints.forEach(point => {
+      let key = point[0] + ',' + point[1];
+      if (!seen.has(key)) {
+          seen.add(key);
+          uniquePoints.push(point);
+          let marker = L.marker([point[0], point[1]], { icon: leafletIcon }).addTo(map)
+              .bindPopup(point[2]);
+          marker.on("mouseover", function () {
+              this.setZIndexOffset(1000);
+          });
+          marker.on("mouseout", function () {
+              this.setZIndexOffset(0);
+          });
+          markers.push(marker);
+      }
+  });
+
+  // Mảng lưu trữ các đoạn đường (để xóa khi chuyển đổi lộ trình)
+  let routeSegments = [];
+
+  // Hàm xóa các đoạn đường hiện tại
+  function clearRouteSegments() {
+      routeSegments.forEach(segment => {
+          map.removeLayer(segment.line);
+          map.removeLayer(segment.decorator);
+      });
+      routeSegments = [];
+  }
+
+  // Hàm vẽ đường đi giữa từng cặp trạm liên tiếp
+  function drawSegment(startPoint, endPoint, color) {
+      let waypoints = [
+          L.latLng(startPoint[0], startPoint[1]),
+          L.latLng(endPoint[0], endPoint[1])
+      ];
+
+      let routingControl = L.Routing.control({
+          waypoints: waypoints,
+          routeWhileDragging: false,
+          lineOptions: {
+              styles: [{ color: color, opacity: 0.7, weight: 4 }]
+          },
+          show: false,
+          addWaypoints: false,
+          draggableWaypoints: false,
+          fitSelectedRoutes: false, // Không tự động zoom vào đoạn đường
+          router: L.Routing.osrmv1({
+              serviceUrl: 'https://router.project-osrm.org/route/v1'
+          })
+      }).addTo(map);
+
+      routingControl.on('routesfound', function(e) {
+          let route = e.routes[0];
+          let line = L.polyline(route.coordinates, { color: color, weight: 4, opacity: 0.7 }).addTo(map);
+
+          let decorator = L.polylineDecorator(line, {
+              patterns: [
+                  {
+                      offset: 25,
+                      repeat: 50,
+                      symbol: L.Symbol.arrowHead({
+                          pixelSize: 10,
+                          polygon: false,
+                          pathOptions: { stroke: true, color: color, weight: 2 }
+                      })
+                  }
+              ]
+          }).addTo(map);
+
+          // Lưu đoạn đường và decorator để xóa sau này
+          routeSegments.push({ line: line, decorator: decorator });
+
+          // Xóa routingControl sau khi vẽ xong để không hiển thị trên bản đồ
+          map.removeControl(routingControl);
+      });
+  }
+
+  // Hàm vẽ các đoạn đường giữa các cặp trạm liên tiếp
+  function drawRouteSegments(points, color) {
+      clearRouteSegments(); // Xóa các đoạn đường cũ
+      for (let i = 0; i < points.length - 1; i++) {
+          drawSegment(points[i], points[i + 1], color);
+      }
+  }
+
+  // Hàm tính quãng đường tổng thể
+  let currentRoute = null;
+  function calculateTotalDistance(points, routeType, callback) {
+      if (currentRoute) {
+          map.removeControl(currentRoute);
+      }
+
+      document.getElementById('route-distance').innerText = `Quãng đường ${routeType}: Đang tính toán...`;
+
+      if (points.length > 1) {
+          let waypoints = points.map(point => L.latLng(point[0], point[1]));
+
+          let routingControl = L.Routing.control({
+              waypoints: waypoints,
+              routeWhileDragging: false,
+              lineOptions: {
+                  styles: [{ color: 'transparent', opacity: 0, weight: 0 }] // Ẩn đường đi, chỉ dùng để tính khoảng cách
+              },
+              show: false,
+              addWaypoints: false,
+              draggableWaypoints: false,
+              fitSelectedRoutes: false,
+              router: L.Routing.osrmv1({
+                  serviceUrl: 'https://router.project-osrm.org/route/v1'
+              })
+          }).addTo(map);
+
+          routingControl.on('routesfound', function(e) {
+              let route = e.routes[0];
+              let distance = route.summary.totalDistance; // Khoảng cách tính bằng mét
+              let distanceKm = (distance / 1000).toFixed(2); // Chuyển đổi sang kilômét
+
+              // Cập nhật quãng đường trên giao diện
+              document.getElementById('route-distance').innerText = `Quãng đường ${routeType}: ${distanceKm} km`;
+
+              // Gọi callback để vẽ các đoạn đường
+              callback();
+
+              // Ẩn routingControl sau khi tính xong
+              map.removeControl(routingControl);
+          });
+
+          currentRoute = routingControl;
+      } else {
+          document.getElementById('route-distance').innerText = `Quãng đường ${routeType}: Không có lộ trình`;
+          clearRouteSegments(); // Xóa các đoạn đường nếu không có lộ trình
+          callback();
+      }
+  }
+
+  // Hiển thị lộ trình lượt đi mặc định
+  if (pointsOutbound.length > 1) {
+      calculateTotalDistance(pointsOutbound, 'lượt đi', () => {
+          drawRouteSegments(pointsOutbound, 'blue');
+      });
+  } else {
+      document.getElementById('route-distance').innerText = `Quãng đường lượt đi: Không có lộ trình`;
+      clearRouteSegments();
+  }
+
+  // Xử lý sự kiện khi người dùng chuyển đổi giữa lượt đi và lượt về
+  document.getElementById('show-outbound').addEventListener('click', function() {
+      calculateTotalDistance(pointsOutbound, 'lượt đi', () => {
+          drawRouteSegments(pointsOutbound, 'blue');
+      });
+      this.classList.add('active');
+      document.getElementById('show-inbound').classList.remove('active');
+  });
+
+  document.getElementById('show-inbound').addEventListener('click', function() {
+      calculateTotalDistance(pointsInbound, 'lượt về', () => {
+          drawRouteSegments(pointsInbound, 'red');
+      });
+      this.classList.add('active');
+      document.getElementById('show-outbound').classList.remove('active');
+  });
+
+  // Ẩn/hiển thị marker dựa trên mức zoom
+  function updateMarkersVisibility() {
+      let currentZoom = map.getZoom();
+      let zoomThreshold = 15;
+      markers.forEach(marker => {
+          if (currentZoom < zoomThreshold) {
+              marker.setOpacity(0);
+          } else {
+              marker.setOpacity(1);
+          }
+      });
+  }
+
+  map.on('zoomend', updateMarkersVisibility);
+  updateMarkersVisibility();
+</script>
 {% endblock %}
