@@ -102,14 +102,53 @@
   let allPoints = [...pointsOutbound, ...pointsInbound];
   let uniquePoints = [];
   let seen = new Set();
+  let outboundOrder = new Map(); // Lưu thứ tự và thời gian trạm lượt đi
+  let inboundOrder = new Map(); // Lưu thứ tự và thời gian trạm lượt về
 
-  allPoints.forEach(point => {
+  // Gán thứ tự và thời gian cho các trạm lượt đi
+  pointsOutbound.forEach((point, idx) => {
+      let key = point[0] + ',' + point[1];
+      outboundOrder.set(key, { order: idx + 1, time: point[3] || 'N/A' });
+  });
+
+  // Gán thứ tự và thời gian cho các trạm lượt về
+  pointsInbound.forEach((point, idx) => {
+      let key = point[0] + ',' + point[1];
+      inboundOrder.set(key, { order: idx + 1, time: point[3] || 'N/A' });
+  });
+
+  allPoints.forEach((point) => {
       let key = point[0] + ',' + point[1];
       if (!seen.has(key)) {
           seen.add(key);
           uniquePoints.push(point);
+          let popupContent = point[2];
+          // Thêm thông tin thứ tự, thời gian và vai trò trạm
+          let outboundInfo = outboundOrder.has(key) ? `Lượt đi: thứ ${outboundOrder.get(key).order} (${outboundOrder.get(key).time})` : "";
+          let inboundInfo = inboundOrder.has(key) ? `Lượt về: thứ ${inboundOrder.get(key).order} (${inboundOrder.get(key).time})` : "";
+          if (outboundOrder.has(key)) {
+              if (outboundOrder.get(key).order === 1) {
+                  outboundInfo = outboundInfo.replace(")", ", Bắt đầu)");
+              } else if (outboundOrder.get(key).order === pointsOutbound.length && pointsOutbound.length > 1) {
+                  outboundInfo = outboundInfo.replace(")", ", Kết thúc)");
+              }
+          }
+          if (inboundOrder.has(key)) {
+              if (inboundOrder.get(key).order === 1) {
+                  inboundInfo = inboundInfo.replace(")", ", Bắt đầu)");
+              } else if (inboundOrder.get(key).order === pointsInbound.length && pointsInbound.length > 1) {
+                  inboundInfo = inboundInfo.replace(")", ", Kết thúc)");
+              }
+          }
+          if (outboundInfo && inboundInfo) {
+              popupContent += `<br>${outboundInfo}<br>${inboundInfo}`;
+          } else if (outboundInfo) {
+              popupContent += `<br>${outboundInfo}`;
+          } else if (inboundInfo) {
+              popupContent += `<br>${inboundInfo}`;
+          }
           let marker = L.marker([point[0], point[1]], { icon: leafletIcon }).addTo(map)
-              .bindPopup(point[2]);
+              .bindPopup(popupContent);
           marker.on("mouseover", function () {
               this.setZIndexOffset(1000);
           });
@@ -195,7 +234,19 @@
           map.removeControl(currentRoute);
       }
 
-      document.getElementById('route-distance').innerText = `Quãng đường ${routeType}: Đang tính toán...`;
+      // Hiển thị tất cả trạm (bắt đầu, trung gian, kết thúc) với thời gian
+      let routeInfo = `Lộ trình ${routeType}: `;
+      if (points.length > 1) {
+          if (points.length === 2) {
+              routeInfo += `Từ ${points[0][2]} (${points[0][3] || 'N/A'}) đến ${points[1][2]} (${points[1][3] || 'N/A'})`;
+          } else {
+              routeInfo += `Từ ${points[0][2]} (${points[0][3] || 'N/A'}) qua ${points.slice(1, -1).map(p => `${p[2]} (${p[3] || 'N/A'})`).join(", ")} đến ${points[points.length - 1][2]} (${points[points.length - 1][3] || 'N/A'})`;
+          }
+          routeInfo += `, Quãng đường: Đang tính toán...`;
+      } else {
+          routeInfo += `Không có lộ trình`;
+      }
+      document.getElementById('route-distance').innerText = routeInfo;
 
       if (points.length > 1) {
           let waypoints = points.map(point => L.latLng(point[0], point[1]));
@@ -220,8 +271,15 @@
               let distance = route.summary.totalDistance; // Khoảng cách tính bằng mét
               let distanceKm = (distance / 1000).toFixed(2); // Chuyển đổi sang kilômét
 
-              // Cập nhật quãng đường trên giao diện
-              document.getElementById('route-distance').innerText = `Quãng đường ${routeType}: ${distanceKm} km`;
+              // Cập nhật quãng đường với tất cả trạm và thời gian
+              let updatedRouteInfo = `Lộ trình ${routeType}: `;
+              if (points.length === 2) {
+                  updatedRouteInfo += `Từ ${points[0][2]} (${points[0][3] || 'N/A'}) đến ${points[1][2]} (${points[1][3] || 'N/A'})`;
+              } else {
+                  updatedRouteInfo += `Từ ${points[0][2]} (${points[0][3] || 'N/A'}) qua ${points.slice(1, -1).map(p => `${p[2]} (${p[3] || 'N/A'})`).join(", ")} đến ${points[points.length - 1][2]} (${points[points.length - 1][3] || 'N/A'})`;
+              }
+              updatedRouteInfo += `, Quãng đường: ${distanceKm} km`;
+              document.getElementById('route-distance').innerText = updatedRouteInfo;
 
               // Gọi callback để vẽ các đoạn đường
               callback();
@@ -232,7 +290,6 @@
 
           currentRoute = routingControl;
       } else {
-          document.getElementById('route-distance').innerText = `Quãng đường ${routeType}: Không có lộ trình`;
           clearRouteSegments(); // Xóa các đoạn đường nếu không có lộ trình
           callback();
       }
@@ -244,7 +301,7 @@
           drawRouteSegments(pointsOutbound, 'blue');
       });
   } else {
-      document.getElementById('route-distance').innerText = `Quãng đường lượt đi: Không có lộ trình`;
+      document.getElementById('route-distance').innerText = `Lộ trình lượt đi: Không có lộ trình`;
       clearRouteSegments();
   }
 
