@@ -1,38 +1,66 @@
-{% extends "index.html" %}
-{% load static %}
-
-{% block map %}
-    <link rel="stylesheet" href="{% static 'leaflet/leaflet.css' %}">
-    <link rel="stylesheet" href="{% static 'css/map.css' %}">
-    <script src="{% static 'leaflet/leaflet.js' %}"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"/>
-    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.fullscreen/Control.FullScreen.css"/>
-    <script src="https://unpkg.com/leaflet.fullscreen/Control.FullScreen.js"></script>
-{% endblock %}
-
-{% block content %}
+{% extends "index.html" %} {% load static %} {% block map %}
+<link rel="stylesheet" href="{% static 'leaflet/leaflet.css' %}" />
+<link rel="stylesheet" href="{% static 'css/map.css' %}" />
+<script src="{% static 'leaflet/leaflet.js' %}"></script>
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"
+/>
+<script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet.fullscreen/Control.FullScreen.css"
+/>
+<script src="https://unpkg.com/leaflet.fullscreen/Control.FullScreen.js"></script>
+{% endblock %} {% block content %}
 <section class="section-padding">
   <div class="container">
     <div class="row">
       <div class="col-lg-12 text-center">
         <h3 class="mb-4">Bản đồ vị trí các trạm xe buýt</h3>
+        <div style="margin-bottom: 20px">
+          <input
+            type="text"
+            id="search-input"
+            placeholder="Tìm trạm hoặc tuyến..."
+            style="
+              width: 300px;
+              padding: 8px;
+              font-size: 16px;
+              border: 1px solid #ccc;
+              border-radius: 4px;
+              outline: none;
+            "
+          />
+          <div
+            id="search-results"
+            style="
+              max-height: 200px;
+              overflow-y: auto;
+              background: white;
+              border: 1px solid #ccc;
+              border-radius: 4px;
+              margin-top: 5px;
+              display: none;
+            "
+          ></div>
+        </div>
       </div>
-      <div id="map" class="custom-block bg-white shadow-lg mb-5" style="height:770px">
-      </div>
+      <div
+        id="map"
+        class="custom-block bg-white shadow-lg mb-5"
+        style="height: 770px"
+      ></div>
     </div>
   </div>
 </section>
-{% endblock %}
+{% endblock %} {% block script %}
+<script>
+  const CENTER_LAT   = {{ center_lat }};
+  const CENTER_LNG   = {{ center_lng }};
+  const DEFAULT_ZOOM = {{ default_zoom }};
+  const POINTS = JSON.parse('{{ points_json|escapejs }}');
+</script>
 
-{% block script %}
-  {# 1. Định nghĩa biến JS từ context Django #}
-  <script>
-    const CENTER_LAT   = {{ center_lat }};
-    const CENTER_LNG   = {{ center_lng }};
-    const DEFAULT_ZOOM = {{ default_zoom }};
-    const POINTS = JSON.parse('{{ points_json|escapejs }}');
-  </script>
-
-  <script src="{% static 'js/map/simple.js' %}"></script>
+<script src="{% static 'js/map/simple.js' %}"></script>
 {% endblock %}
