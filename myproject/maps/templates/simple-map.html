@@ -1,6 +1,7 @@
 {% extends "index.html" %} {% load static %} {% block map %}
 <link rel="stylesheet" href="{% static 'leaflet/leaflet.css' %}" />
 <link rel="stylesheet" href="{% static 'css/map.css' %}" />
+<link rel="stylesheet" href="{% static 'css/search.css' %}" />
 <script src="{% static 'leaflet/leaflet.js' %}"></script>
 <link
   rel="stylesheet"
@@ -18,32 +19,13 @@
     <div class="row">
       <div class="col-lg-12 text-center">
         <h3 class="mb-4">Bản đồ vị trí các trạm xe buýt</h3>
-        <div style="margin-bottom: 20px">
+        <div class="search-container">
           <input
             type="text"
             id="search-input"
             placeholder="Tìm trạm hoặc tuyến..."
-            style="
-              width: 300px;
-              padding: 8px;
-              font-size: 16px;
-              border: 1px solid #ccc;
-              border-radius: 4px;
-              outline: none;
-            "
           />
-          <div
-            id="search-results"
-            style="
-              max-height: 200px;
-              overflow-y: auto;
-              background: white;
-              border: 1px solid #ccc;
-              border-radius: 4px;
-              margin-top: 5px;
-              display: none;
-            "
-          ></div>
+          <div id="search-results"></div>
         </div>
       </div>
       <div
@@ -61,6 +43,5 @@
   const DEFAULT_ZOOM = {{ default_zoom }};
   const POINTS = JSON.parse('{{ points_json|escapejs }}');
 </script>
-
 <script src="{% static 'js/map/simple.js' %}"></script>
 {% endblock %}

@@ -116,7 +116,7 @@ function findNearestStation(latlng) {
 // Định vị và vẽ chỉ đường đến trạm gần nhất
 function locateAndRoute() {
     if (!navigator.geolocation) {
-        alert('Trình duyệt không hỗ trợ Geolocation. Vui lòng kiểm tra cài đặt trình duyệt.');
+        alert('Trình duyệt không hỗ trợ Geolocation. Vui lòng kiểm tra cài đặt trình duyệt và bật quyền truy cập vị trí.');
         return;
     }
     navigator.geolocation.getCurrentPosition(
@@ -125,7 +125,7 @@ function locateAndRoute() {
             const accuracy = coords.accuracy;
             console.log(`User position: lat=${coords.latitude}, lng=${coords.longitude}, accuracy=${accuracy}m`);
             if (accuracy > 100) {
-                alert(`Độ chính xác vị trí thấp (${accuracy}m). Vui lòng bật GPS, kết nối Wi-Fi mạnh, hoặc kiểm tra quyền truy cập vị trí.`);
+                alert(`Độ chính xác vị trí thấp (${accuracy}m). Vui lòng:\n- Bật GPS trên thiết bị.\n- Đảm bảo kết nối Wi-Fi hoặc dữ liệu di động mạnh.\n- Kiểm tra quyền truy cập vị trí trong trình duyệt.\n- Thử di chuyển ra ngoài trời.`);
             }
 
             clearRoute();
@@ -150,19 +150,19 @@ function locateAndRoute() {
             routingControl = L.Routing.control({
                 waypoints: [latlng, nearest.getLatLng()],
                 router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' }),
-                lineOptions: { styles: [{ weight: 4 }] },
+                lineOptions: { styles: [{ color: '#ff0000', weight: 4 }] }, // Red path
                 fitSelectedRoute: true,
                 showAlternatives: true,
                 addWaypoints: false,
                 createMarker: (i, wp, n) => {
                     if (i === 0) return L.marker(wp.latLng, { icon: userIcon }).bindPopup('Bắt đầu');
-                    else if (i === n-1) return L.marker(wp.latLng, { icon: busIcon }).bindPopup('Đích đến');
+                    else if (i === n-1) return L.marker(wp.latLng, { icon: busIcon }).bindPopup('Trạm gần nhất');
                 }
             }).addTo(map);
         },
         err => {
             console.error("Geolocation error:", err);
-            alert(`Lỗi lấy vị trí: ${err.message}. Vui lòng kiểm tra quyền truy cập vị trí, bật GPS, hoặc thử lại.`);
+            alert(`Lỗi lấy vị trí: ${err.message}. Vui lòng:\n- Kiểm tra quyền truy cập vị trí trong trình duyệt.\n- Bật GPS trên thiết bị.\n- Thử lại sau vài giây.`);
         },
         {
             enableHighAccuracy: true,
@@ -182,44 +182,67 @@ function searchStations(query) {
     });
 }
 
-// Hàm vẽ đường đến trạm được chọn
+// Hàm vẽ đường đến trạm được chọn qua trạm gần nhất
 function routeToStation(stationMarker) {
     if (!navigator.geolocation) {
-        alert('Trình duyệt không hỗ trợ Geolocation. Vui lòng kiểm tra cài đặt trình duyệt.');
+        alert('Trình duyệt không hỗ trợ Geolocation. Vui lòng kiểm tra cài đặt trình duyệt và bật quyền truy cập vị trí.');
         return;
     }
     navigator.geolocation.getCurrentPosition(
         ({ coords }) => {
-            const latlng = L.latLng(coords.latitude, coords.longitude);
+            const userLatlng = L.latLng(coords.latitude, coords.longitude);
             const accuracy = coords.accuracy;
             console.log(`User position for routing: lat=${coords.latitude}, lng=${coords.longitude}, accuracy=${accuracy}m`);
             if (accuracy > 100) {
-                alert(`Độ chính xác vị trí thấp (${accuracy}m). Vui lòng bật GPS, kết nối Wi-Fi mạnh, hoặc kiểm tra quyền truy cập vị trí.`);
+                alert(`Độ chính xác vị trí thấp (${accuracy}m). Vui lòng:\n- Bật GPS trên thiết bị.\n- Đảm bảo kết nối Wi-Fi hoặc dữ liệu di động mạnh.\n- Kiểm tra quyền truy cập vị trí trong trình duyệt.\n- Thử di chuyển ra ngoài trời.`);
             }
 
             clearRoute();
-            userMarker = L.marker(latlng, { icon: userIcon })
+            userMarker = L.marker(userLatlng, { icon: userIcon })
                 .addTo(map)
                 .bindPopup(`Bạn đang ở đây (độ chính xác: ${Math.round(accuracy)}m)`).openPopup();
-            map.setView(latlng, ZOOM_THRESHOLD);
+            map.setView(userLatlng, ZOOM_THRESHOLD);
 
+            // Tìm trạm gần nhất
+            const { nearest } = findNearestStation(userLatlng);
+            if (!nearest) {
+                alert(`Không có trạm trong bán kính ${SEARCH_RADIUS}m`);
+                return;
+            }
+
+            // Vẽ đường từ người dùng đến trạm gần nhất (màu đỏ)
             routingControl = L.Routing.control({
-                waypoints: [latlng, stationMarker.getLatLng()],
+                waypoints: [userLatlng, nearest.getLatLng()],
                 router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' }),
-                lineOptions: { styles: [{ weight: 4 }] },
-                fitSelectedRoute: true,
-                showAlternatives: true,
+                lineOptions: { styles: [{ color: '#ff0000', weight: 4 }] }, // Red path
+                fitSelectedRoute: false,
+                showAlternatives: false,
                 addWaypoints: false,
                 createMarker: (i, wp, n) => {
                     if (i === 0) return L.marker(wp.latLng, { icon: userIcon }).bindPopup('Bắt đầu');
+                    else if (i === n-1) return L.marker(wp.latLng, { icon: busIcon }).bindPopup('Trạm gần nhất');
+                }
+            }).addTo(map);
+
+            // Vẽ đường từ trạm gần nhất đến trạm đích (màu xanh)
+            L.Routing.control({
+                waypoints: [nearest.getLatLng(), stationMarker.getLatLng()],
+                router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' }),
+                lineOptions: { styles: [{ color: '#22c55e', weight: 4 }] }, // Green path
+                fitSelectedRoute: true,
+                showAlternatives: false,
+                addWaypoints: false,
+                createMarker: (i, wp, n) => {
+                    if (i === 0) return L.marker(wp.latLng, { icon: busIcon }).bindPopup('Trạm gần nhất');
                     else if (i === n-1) return L.marker(wp.latLng, { icon: busIcon }).bindPopup('Đích đến');
                 }
             }).addTo(map);
+
             stationMarker.openPopup();
         },
         err => {
             console.error("Geolocation error:", err);
-            alert(`Lỗi lấy vị trí: ${err.message}. Vui lòng kiểm tra quyền truy cập vị trí, bật GPS, hoặc thử lại.`);
+            alert(`Lỗi lấy vị trí: ${err.message}. Vui lòng:\n- Kiểm tra quyền truy cập vị trí trong trình duyệt.\n- Bật GPS trên thiết bị.\n- Thử lại sau vài giây.`);
         },
         {
             enableHighAccuracy: true,
@@ -245,22 +268,13 @@ if (searchInput && searchResults) {
         const matches = searchStations(query);
         console.log(`Search query: ${query}, found ${matches.length} results`);
         if (matches.length === 0) {
-            searchResults.innerHTML = '<div style="padding: 10px; font-size: 14px; color: #555;">Không tìm thấy</div>';
+            searchResults.innerHTML = '<div style="padding: 12px 16px; font-size: 14px; color: #555;">Không tìm thấy</div>';
             searchResults.style.display = 'block';
             return;
         }
         matches.forEach(m => {
             const div = document.createElement('div');
-            Object.assign(div.style, {
-                padding: '10px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                borderBottom: '1px solid #eee',
-                transition: 'background 0.2s'
-            });
             div.innerText = `${m._data.title} (${m._data.routes})`;
-            div.addEventListener('mouseover', () => { div.style.background = '#f5f5f5'; });
-            div.addEventListener('mouseout', () => { div.style.background = 'white'; });
             div.addEventListener('click', () => {
                 routeToStation(m);
                 searchResults.style.display = 'none';
